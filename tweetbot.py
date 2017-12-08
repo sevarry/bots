@@ -30,7 +30,6 @@ def tweet():
         print '\nTweeting', line, 'from bot', acct
         time.sleep(5)
 
-
 def main():
     cursor.execute('''SELECT * from bot_list''')
     for row in cursor:
