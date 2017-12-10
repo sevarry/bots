@@ -70,7 +70,7 @@ def usage():
 def main():
     global tweet_msg
     global rt_query
-    global like_msg
+    global like_query
 
     try:
         opts, args = getopt.getopt(sys.argv[1:], "t:r:l:", ["tweet","retweet","like"])
