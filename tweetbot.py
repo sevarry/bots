@@ -20,8 +20,11 @@ def tweet(bot):
     auth = tweepy.OAuthHandler(ckey, csecret)
     auth.set_access_token(akey, asecret)
     api = tweepy.API(auth)
-    api.update_status(status=tweetmsg)
-    print '\nTweeting', tweetmsg, 'from bot', acct
+    try:
+        api.update_status(status=tweetmsg)
+        print '\nTweeting', tweetmsg, 'from bot', acct
+    except tweepy.TweepError as e:
+        print(e.reason)
     time.sleep(2)
 
 def retweet(bot):
@@ -36,9 +39,12 @@ def retweet(bot):
     query = str(sys.argv[2])
     max_tweets = 5
     found = [status for status in tweepy.Cursor(api.search, q=query).items(max_tweets)]
-    for i in found:
-        print '\nRetweeting "',i.text,'" from bot--->', acct
-        api.retweet(i.id)
+    try:
+        for i in found:
+            print '\nRetweeting "',i.text,'" from bot--->', acct
+            api.retweet(i.id)
+    except tweepy.TweepError as e:
+        print(e.reason)
 
 def main():
     try:
