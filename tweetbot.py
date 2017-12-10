@@ -22,7 +22,7 @@ def tweet(bot):
     api = tweepy.API(auth)
     try:
         api.update_status(status=tweetmsg)
-        print '\nTweeting', tweetmsg, 'from bot--->', acct
+        print '\nTweeting', tweetmsg, 'from bot', acct
     except tweepy.TweepError as e:
         print(e.reason)
     time.sleep(2)
@@ -46,7 +46,7 @@ def retweet(bot):
     except tweepy.TweepError as e:
         print(e.reason)
 
-def like():
+def like(bot):
     acct = (bot[0])
     ckey = (bot[2])
     csecret = (bot[3])
@@ -61,13 +61,13 @@ def like():
     try:
         for i in found:
             print '\nLiking "',i.text,'" by bot--->', acct
-            api.favorite:(i.id)
+            api.create_favorite(i.id)
     except tweepy.TweepError as e:
         print(e.reason)
 
 def main():
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "t:r:l:", ["tweet","retweet","like"])
+        opts, args = getopt.getopt(sys.argv[1:], "t:r:l", ["tweet","retweet","like"])
     except getopt.GetoptError as err:
         print str(err)
         return
@@ -82,10 +82,9 @@ def main():
             for bot in cursor:
                 retweet(bot)
                 time.sleep(2)
-        elif o in "-l","--like"):
+        elif o in ("-l","--like"):
             cursor.execute('''SELECT * from bot_list''')
             for bot in cursor:
                 like(bot)
                 time.sleep(2)
-
 main()
