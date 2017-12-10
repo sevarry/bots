@@ -46,9 +46,28 @@ def retweet(bot):
     except tweepy.TweepError as e:
         print(e.reason)
 
+def like():
+    acct = (bot[0])
+    ckey = (bot[2])
+    csecret = (bot[3])
+    akey = (bot[4])
+    asecret = (bot[5])
+    auth = tweepy.OAuthHandler(ckey, csecret)
+    auth.set_access_token(akey, asecret)
+    api = tweepy.API(auth)
+    query = str(sys.argv[2])
+    max_tweets = 25
+    found = [status for status in tweepy.Cursor(api.search, q=query).items(max_tweets)]
+    try:
+        for i in found:
+            print '\nLiking "',i.text,'" by bot--->', acct
+            api.favorite:(i.id)
+    except tweepy.TweepError as e:
+        print(e.reason)
+
 def main():
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "t:r:", ["tweet","retweet"])
+        opts, args = getopt.getopt(sys.argv[1:], "t:r:l:", ["tweet","retweet","like"])
     except getopt.GetoptError as err:
         print str(err)
         return
@@ -62,6 +81,11 @@ def main():
             cursor.execute('''SELECT * from bot_list''')
             for bot in cursor:
                 retweet(bot)
+                time.sleep(2)
+        elif o in "-l","--like"):
+            cursor.execute('''SELECT * from bot_list''')
+            for bot in cursor:
+                like(bot)
                 time.sleep(2)
 
 main()
