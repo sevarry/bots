@@ -22,7 +22,7 @@ def tweet(bot):
     api = tweepy.API(auth)
     try:
         api.update_status(status=tweetmsg)
-        print '\nTweeting', tweetmsg, 'from bot', acct
+        print '\nTweeting', tweetmsg, 'from bot--->', acct
     except tweepy.TweepError as e:
         print(e.reason)
     time.sleep(2)
