@@ -62,24 +62,36 @@ def like(bot):
     except tweepy.TweepError as e:
         print(e.reason)
 
-#todo: finish -h function
 def usage():
+    print
     print "TwitterBot Control Console"
     print
-    print "Usage"
+    print "Usage: tweetbot.py"
+    print "-t --tweet='Hello World!'"
+    print
+    print "-r --reweet='#helloworld'"
+    print
+    print "-l --like='#helloworld'"
+    print
+    sys.exit(0)
 
 def main():
     global tweet_msg
     global rt_query
     global like_query
 
+    if not len(sys.argv[1:]):
+        usage()
+
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "t:r:l:", ["tweet","retweet","like"])
+        opts, args = getopt.getopt(sys.argv[1:], "ht:r:l:", ["help","tweet","retweet","like"])
     except getopt.GetoptError as err:
         print str(err)
         return
     for o,a in opts:
-        if o in ("-t","--tweet"):
+        if o in ("-h","--help"):
+            usage()
+        elif o in ("-t","--tweet"):
             tweet_msg = a
             cursor.execute('''SELECT * from bot_list''')
             for bot in cursor:
