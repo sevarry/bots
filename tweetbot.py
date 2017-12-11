@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
 import getopt
+import os
+import requests
 import tweepy
 import time
 import sys
@@ -62,16 +64,39 @@ def like(bot):
     except tweepy.TweepError as e:
         print(e.reason)
 
+def image(bot):
+    acct = (bot[0])
+    ckey = (bot[2])
+    csecret = (bot[3])
+    akey = (bot[4])
+    asecret = (bot[5])
+    auth = tweepy.OAuthHandler(ckey, csecret)
+    auth.set_access_token(akey, asecret)
+    api = tweepy.API(auth)
+    filename = 'temp.jpg'
+    r = requests.get(url, stream=True)
+    if r.status_code == 200:
+        with open(filename, 'wb') as image:
+            for pic in r:
+                image.write(pic)
+        api.update_with_media(filename)
+        print '\nSharing',url,'by bot--->', acct
+        os.remove(filename)
+    else:
+        print 'Unable to retrieve image'
+
 def usage():
     print
-    print "TwitterBot Control Console"
+    print 'TwitterBot Control Console'
     print
-    print "Usage: tweetbot.py"
-    print "-t 'Hello World!'"
+    print 'Usage: tweetbot.py'
+    print '-t "Hello World!"'
     print
-    print "-r '#helloworld'"
+    print '-r "#helloworld"'
     print
-    print "-l '#helloworld'"
+    print '-l "#helloworld"'
+    print
+    print '-i https://example.io/hello.png'
     print
     sys.exit(0)
 
@@ -79,36 +104,45 @@ def main():
     global tweet_msg
     global rt_query
     global like_query
+    global url
 
     if not len(sys.argv[1:]):
         usage()
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "ht:r:l:")
+        opts, args = getopt.getopt(sys.argv[1:], 'ht:r:l:i:')
     except getopt.GetoptError as err:
         print str(err)
         return
     for o,a in opts:
-        if o in ("-h"):
+        if o in ('-h'):
             usage()
-        elif o in ("-t"):
+        elif o in ('-t'):
             tweet_msg = a
             cursor.execute('''SELECT * from bot_list''')
             for bot in cursor:
                 tweet(bot)
                 time.sleep(2)
-        elif o in ("-r"):
+        elif o in ('-r'):
             rt_query = a
             cursor.execute('''SELECT * from bot_list''')
             for bot in cursor:
                 retweet(bot)
                 time.sleep(2)
-        elif o in ("-l"):
+        elif o in ('-l'):
             like_query = a
             cursor.execute('''SELECT * from bot_list''')
             for bot in cursor:
                 like(bot)
                 time.sleep(2)
+        elif o in ('-i'):
+            url = a
+            cursor.execute('''SELECT * from bot_list''')
+            for bot in cursor:
+                image(bot)
+                time.sleep(2)
         else:
-            assert False,"Unhandled Option"
+            assert False,'Unhandled Option'
+            print
+            usage()
 main()
