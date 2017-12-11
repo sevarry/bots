@@ -64,7 +64,7 @@ def like(bot):
     except tweepy.TweepError as e:
         print(e.reason)
 
-def image(bot):
+def image(bot,filename):
     acct = (bot[0])
     ckey = (bot[2])
     csecret = (bot[3])
@@ -73,7 +73,6 @@ def image(bot):
     auth = tweepy.OAuthHandler(ckey, csecret)
     auth.set_access_token(akey, asecret)
     api = tweepy.API(auth)
-    filename = 'temp.jpg'
     try:
         api.update_with_media(filename)
         print '\nSharing',url,'by bot--->', acct
@@ -140,7 +139,7 @@ def main():
                         chunk.write(pic)
             cursor.execute('''SELECT * from bot_list''')
             for bot in cursor:
-                image(bot)
+                image(bot,filename)
                 time.sleep(2)
             os.remove(filename)
         else:
