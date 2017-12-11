@@ -61,7 +61,6 @@ def like(bot):
             api.create_favorite(i.id)
     except tweepy.TweepError as e:
         print(e.reason)
-        usage()
 
 def usage():
     print
