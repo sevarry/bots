@@ -61,17 +61,18 @@ def like(bot):
             api.create_favorite(i.id)
     except tweepy.TweepError as e:
         print(e.reason)
+        usage()
 
 def usage():
     print
     print "TwitterBot Control Console"
     print
     print "Usage: tweetbot.py"
-    print "-t --tweet='Hello World!'"
+    print "-t 'Hello World!'"
     print
-    print "-r --reweet='#helloworld'"
+    print "-r '#helloworld'"
     print
-    print "-l --like='#helloworld'"
+    print "-l '#helloworld'"
     print
     sys.exit(0)
 
@@ -84,29 +85,31 @@ def main():
         usage()
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "ht:r:l:", ["help","tweet","retweet","like"])
+        opts, args = getopt.getopt(sys.argv[1:], "ht:r:l:")
     except getopt.GetoptError as err:
         print str(err)
         return
     for o,a in opts:
-        if o in ("-h","--help"):
+        if o in ("-h"):
             usage()
-        elif o in ("-t","--tweet"):
+        elif o in ("-t"):
             tweet_msg = a
             cursor.execute('''SELECT * from bot_list''')
             for bot in cursor:
                 tweet(bot)
                 time.sleep(2)
-        elif o in ("-r","--retweet"):
+        elif o in ("-r"):
             rt_query = a
             cursor.execute('''SELECT * from bot_list''')
             for bot in cursor:
                 retweet(bot)
                 time.sleep(2)
-        elif o in ("-l","--like"):
+        elif o in ("-l"):
             like_query = a
             cursor.execute('''SELECT * from bot_list''')
             for bot in cursor:
                 like(bot)
                 time.sleep(2)
+        else:
+            assert False,"Unhandled Option"
 main()
