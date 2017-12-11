@@ -74,16 +74,11 @@ def image(bot):
     auth.set_access_token(akey, asecret)
     api = tweepy.API(auth)
     filename = 'temp.jpg'
-    r = requests.get(url, stream=True)
-    if r.status_code == 200:
-        with open(filename, 'wb') as image:
-            for pic in r:
-                image.write(pic)
+    try:
         api.update_with_media(filename)
         print '\nSharing',url,'by bot--->', acct
-        os.remove(filename)
-    else:
-        print 'Unable to retrieve image'
+    except tweepy.TweepError as e:
+        print(e.reason)
 
 def usage():
     print
@@ -137,10 +132,17 @@ def main():
                 time.sleep(2)
         elif o in ('-i'):
             url = a
+            filename = 'temp.jpg'
+            r = requests.get(url, stream=True)
+            if r.status_code == 200:
+                with open(filename, 'wb') as chunk:
+                    for pic in r:
+                        chunk.write(pic)
             cursor.execute('''SELECT * from bot_list''')
             for bot in cursor:
                 image(bot)
                 time.sleep(2)
+            os.remove(filename)
         else:
             assert False,'Unhandled Option'
             print
