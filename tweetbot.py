@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import getopt
+import getpass
 import os
 import requests
 import tweepy
@@ -11,6 +12,10 @@ import sqlite3
 sqlite_db = 'bots.db'
 conn = sqlite3.connect(sqlite_db)
 cursor = conn.cursor()
+
+class bcolors:
+    green = '\033[92m'
+    endc = '\033[0m'
 
 def tweet(bot):
     acct = (bot[0])
@@ -79,18 +84,43 @@ def image(bot,filename):
     except tweepy.TweepError as e:
         print(e.reason)
 
+def newbot():
+    acct = raw_input("\nEnter the new twitter account's name, i.e. @twitter:\n")
+    email = raw_input("\nEnter the twitter account email address:\n")
+    ckey = getpass.getpass("\nEnter the twitter account's CONSUMER KEY:\n")
+    csecret = getpass.getpass("\nEnter the twitter account's CONSUMER SECRET:\n")
+    akey = getpass.getpass("\nEnter the twitter account's ACCESS KEY:\n")
+    asecret = getpass.getpass("\nEnter the twitter account's ACCESS TOKEN:\n")
+
+    cursor.execute("""INSERT INTO bot_list ('account', 'email', 'consumer_key', 'consumer_secret', 'access_key', 'access_secret') VALUES (?, ?, ?, ?, ?, ?)""", (acct, email, ckey, csecret, akey, asecret))
+    user_confirm = raw_input("Thank you, commit the new account to the database? Y/N:\n")
+    if user_confirm == 'Y':
+        conn.commit()
+        print "\n",acct,"successfully added to the database!"
+    else:
+        print "\nExiting without committing new account"
+        sys.exit()
+
 def usage():
     print
     print 'TwitterBot Control Console'
     print
     print 'Usage: tweetbot.py'
-    print '-t "Hello World!"'
     print
-    print '-r "#helloworld"'
+    print '-a to add a new Twitter account to the database:'
+    print bcolors.green + 'python tweetbot.py -a' + bcolors.endc
     print
-    print '-l "#helloworld"'
+    print '-t to tweet a status update from all bots:'
+    print bcolors.green + 'python tweetbot.py -t "Hello World!"' + bcolors.endc
     print
-    print '-i https://example.io/hello.png'
+    print '-r to retweet from all bots based on a search query:'
+    print bcolors.green + 'python tweetbot.py -r "#helloworld"' + bcolors.endc
+    print
+    print '-l to like from all bots based on a search query:'
+    print bcolors.green + 'python tweetbot.py -l "#helloworld"' + bcolors.endc
+    print
+    print '-i to tweet an image from all bots:'
+    print bcolors.green + 'python tweetbot.py -i https://example.io/hello.png' + bcolors.endc
     print
     sys.exit(0)
 
@@ -104,7 +134,7 @@ def main():
         usage()
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:], 'ht:r:l:i:')
+        opts, args = getopt.getopt(sys.argv[1:], 'hat:r:l:i:')
     except getopt.GetoptError as err:
         print str(err)
         return
@@ -142,6 +172,8 @@ def main():
                 image(bot,filename)
                 time.sleep(2)
             os.remove(filename)
+        elif o in ('-a'):
+            newbot()
         else:
             assert False,'Unhandled Option'
             print
