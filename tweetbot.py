@@ -84,6 +84,24 @@ def image(bot,filename):
     except tweepy.TweepError as e:
         print(e.reason)
 
+def follow(bot):
+    acct = (bot[0])
+    ckey = (bot[2])
+    csecret = (bot[3])
+    akey = (bot[4])
+    asecret = (bot[5])
+    auth = tweepy.OAuthHandler(ckey, csecret)
+    auth.set_access_token(akey, asecret)
+    api = tweepy.API(auth)
+    max_tweets = 10
+    found = [status for status in tweepy.Cursor(api.search, q=follow_query).items(max_tweets)]
+    try:
+        for i in found:
+            api.create_friendship(i.author._json['screen_name'])
+            print acct,'Following',i.author._json['screen_name']
+    except tweepy.TweepError as e:
+        print(e.reason)
+
 def newbot():
     acct = raw_input("\nEnter the new twitter account's name, i.e. @twitter:\n")
     email = raw_input("\nEnter the twitter account email address:\n")
@@ -128,13 +146,14 @@ def main():
     global tweet_msg
     global rt_query
     global like_query
+    global follow_query
     global url
 
     if not len(sys.argv[1:]):
         usage()
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:], 'hat:r:l:i:')
+        opts, args = getopt.getopt(sys.argv[1:], 'hat:r:l:i:f:')
     except getopt.GetoptError as err:
         print str(err)
         return
@@ -172,6 +191,12 @@ def main():
                 image(bot,filename)
                 time.sleep(2)
             os.remove(filename)
+        elif o in ('-f'):
+            follow_query = a
+            cursor.execute('''SELECT * from bot_list''')
+            for bot in cursor:
+                follow(bot)
+                time.sleep(2)
         elif o in ('-a'):
             newbot()
         else:
