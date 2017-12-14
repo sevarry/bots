@@ -140,6 +140,9 @@ def usage():
     print '-i to tweet an image from all bots:'
     print bcolors.green + 'python tweetbot.py -i https://example.io/hello.png' + bcolors.endc
     print
+    print '-f to follow users based on a search query:'
+    print  bcolors.green + 'python tweetbot.py -f "#helloworld"' + bcolors.endc
+    print
     sys.exit(0)
 
 def main():
