@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+#created by Ted Eckerman, 2017
+
 import getopt
 import getpass
 import os
